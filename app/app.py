@@ -1,18 +1,16 @@
 import json
 import os
-import random
 from enum import StrEnum
 
 import boto3
-from aws_lambda_powertools.event_handler import APIGatewayRestResolver, Response
-from aws_lambda_powertools.utilities.typing import LambdaContext
-from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools import Logger
-from aws_lambda_powertools import Tracer
 from aws_lambda_powertools import Metrics
+from aws_lambda_powertools import Tracer
+from aws_lambda_powertools.event_handler import APIGatewayRestResolver, Response
+from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.metrics import MetricUnit
+from aws_lambda_powertools.utilities.typing import LambdaContext
 from botocore.exceptions import ClientError
-from numpy.f2py.auxfuncs import throw_error
 
 # ---- CORS helper (put near the top of the file) ----
 CORS_HEADERS = {
@@ -20,6 +18,7 @@ CORS_HEADERS = {
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
 }
+
 
 def cors_json(status_code: int = 200, body: dict | list | str | None = None) -> Response:
     if body is None:
@@ -34,6 +33,7 @@ def cors_json(status_code: int = 200, body: dict | list | str | None = None) -> 
         content_type="application/json",
         body=payload,
     )
+
 
 app = APIGatewayRestResolver()
 tracer = Tracer()
