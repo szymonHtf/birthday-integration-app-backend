@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  birthday-integration-app-backend
+
+  Powertools example
+
+Globals:
+  Function:
+    Timeout: 5
+    MemorySize: 128
+    Runtime: python3.13
+    LoggingConfig:
+      LogFormat: JSON
+  # 👇 Add global CORS for the implicit REST API (applies to all "Type: Api" events)
+  Api:
+    Cors:
+      AllowOrigin: "'*'"
+      AllowMethods: "'GET,POST,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+
+Resources:
+  TeamsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      CodeUri: app
+      Description: Function that returns all teams
+      Architectures:
+        - x86_64
+      Tracing: Active
+      Events:
+        HelloPath:
+          Type: Api
+          Properties:
+            Path: /teams
+            Method: GET
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: PowertoolsHelloWorld
+          POWERTOOLS_METRICS_NAMESPACE: Powertools
+          LOG_LEVEL: INFO
+          TEAMS_TABLE_NAME: !Ref TeamsTable
+          MEMBERS_TABLE_NAME: !Ref MembersTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TeamsTable
+      Tags:
+        LambdaPowertools: python
+
+  UnassignedMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      CodeUri: app
+      Description: Function that returns first unassignedMember
+      Architectures:
+        - x86_64
+      Tracing: Active
+      Events:
+        HelloPath:
+          Type: Api
+          Properties:
+            Path: /unassigned-member
+            Method: GET
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: PowertoolsHelloWorld
+          POWERTOOLS_METRICS_NAMESPACE: Powertools
+          LOG_LEVEL: INFO
+          TEAMS_TABLE_NAME: !Ref TeamsTable
+          MEMBERS_TABLE_NAME: !Ref MembersTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TeamsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MembersTable
+      Tags:
+        LambdaPowertools: python
+
+  AssignMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      CodeUri: app
+      Description: Assigns a member to a random team and updates both tables atomically
+      Architectures:
+        - x86_64
+      Tracing: Active
+      Events:
+        AssignPath:
+          Type: Api
+          Properties:
+            Path: /assign
+            Method: POST
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: AssignMember
+          POWERTOOLS_METRICS_NAMESPACE: Powertools
+          LOG_LEVEL: INFO
+          TEAMS_TABLE_NAME: !Ref TeamsTable
+          MEMBERS_TABLE_NAME: !Ref MembersTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TeamsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MembersTable
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:TransactWriteItems
+              Resource:
+                - !GetAtt TeamsTable.Arn
+                - !GetAtt MembersTable.Arn
+      Tags:
+        LambdaPowertools: python
+
+  TeamsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: birthday-integration-app-teams
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: team_name
+          AttributeType: S
+      KeySchema:
+        - AttributeName: team_name
+          KeyType: HASH
+
+  MembersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: birthday-integration-app-members
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: member
+          AttributeType: S
+      KeySchema:
+        - AttributeName: member
+          KeyType: HASH
