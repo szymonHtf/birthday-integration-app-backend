@@ -12,6 +12,7 @@ from aws_lambda_powertools import Tracer
 from aws_lambda_powertools import Metrics
 from aws_lambda_powertools.metrics import MetricUnit
 from botocore.exceptions import ClientError
+from numpy.f2py.auxfuncs import throw_error
 
 # ---- CORS helper (put near the top of the file) ----
 CORS_HEADERS = {
@@ -83,7 +84,7 @@ def _pick_random_team(member: str) -> str:
         return Team.YELLOW
     if member is "Paula":
         return Team.YELLOW
-    return random.choice(TEAM_VALUES)
+    raise ValueError(f"Unknown member: {member}")
 
 
 dynamodb = boto3.resource("dynamodb")
