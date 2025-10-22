@@ -116,6 +116,44 @@ Resources:
       Tags:
         LambdaPowertools: python
 
+  CodeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      CodeUri: app
+      Description: Applies a code and returns the user
+      Architectures:
+        - x86_64
+      Tracing: Active
+      Events:
+        AssignPath:
+          Type: Api
+          Properties:
+            Path: /code
+            Method: POST
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: AssignMember
+          POWERTOOLS_METRICS_NAMESPACE: Powertools
+          LOG_LEVEL: INFO
+          TEAMS_TABLE_NAME: !Ref TeamsTable
+          MEMBERS_TABLE_NAME: !Ref MembersTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TeamsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MembersTable
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:TransactWriteItems
+              Resource:
+                - !GetAtt TeamsTable.Arn
+                - !GetAtt MembersTable.Arn
+      Tags:
+        LambdaPowertools: python
+
   TeamsTable:
     Type: AWS::DynamoDB::Table
     Properties:

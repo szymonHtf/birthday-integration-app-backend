@@ -56,33 +56,33 @@ TEAM_VALUES = sorted({t.value for t in Team})
 
 
 def _pick_random_team(member: str) -> str:
-    if member is "Łukasz":
+    if member == "Łukasz":
         return Team.RED
-    if member is "Gaba":
+    if member == "Gaba":
         return Team.RED
-    if member is "Natalia":
+    if member == "Natalia":
         return Team.BLUE
-    if member is "Zuza":
+    if member == "Zuza":
         return Team.BLUE
-    if member is "Eryk":
+    if member == "Eryk":
         return Team.GREEN
-    if member is "Hubert N":
+    if member == "Hubert N":
         return Team.GREEN
-    if member is "Julita":
+    if member == "Julita":
         return Team.PURPLE
-    if member is "Monika":
+    if member == "Monika":
         return Team.PURPLE
-    if member is "Adam":
+    if member == "Adam":
         return Team.BLACK
-    if member is "Paweł":
+    if member == "Paweł":
         return Team.BLACK
-    if member is "Oskar":
+    if member == "Oskar":
         return Team.ORANGE
-    if member is "Mati":
+    if member == "Mati":
         return Team.ORANGE
-    if member is "Hubert Cz":
+    if member == "Hubert Cz":
         return Team.YELLOW
-    if member is "Paula":
+    if member == "Paula":
         return Team.YELLOW
     raise ValueError(f"Unknown member: {member}")
 
@@ -138,6 +138,27 @@ def get_teams():
 def get_teams():
     return cors_json(200, {"unassigned_member": _get_first_unassigned_member()})
 
+@app.post("/code")
+@tracer.capture_method
+def code():
+    body = app.current_event.json_body or {}
+    code = body.get("code")
+
+    if not code or not isinstance(code, str):
+        return cors_json(400, {"error": "Code is not string"})
+
+    members = _scan_all(members_table)
+
+    for member in members:
+        if member.get("code") == code:
+            teams = _scan_all(teams_table)
+            for team in teams:
+                players = team.get("players", [])
+                if member.get("member") in players:
+                    teammate = next(p for p in players if p != member.get("member"))
+                    member["teammate"] = teammate
+            return cors_json(200, {"data": member})
+    return cors_json(400, {"error": "Invalid code"})
 
 @app.post("/assign")
 @tracer.capture_method
@@ -147,7 +168,7 @@ def assign_member():
 
     if not member or not isinstance(member, str):
         return cors_json(400, {"message": "member is required (string)"})
-
+    logger.info("assigning member %s", member)
     # Pick any team (no balancing/constraints)
     team = _pick_random_team(member)
     logger.info("Random team selected", team=team)
@@ -166,11 +187,11 @@ def assign_member():
         )
 
         # 2) Write/overwrite the member's assigned team (no condition)
-        members_table.put_item(
-            Item={
-                "member": member,
-                "assigned": team,
-            }
+        members_table.update_item(
+            Key={"member": member},
+            UpdateExpression="SET #a = :team",
+            ExpressionAttributeNames={"#a": "assigned"},
+            ExpressionAttributeValues={":team": team},
         )
 
         metrics.add_metric(name="AssignSuccess", unit=MetricUnit.Count, value=1)
