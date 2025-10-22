@@ -1,6 +1,7 @@
 import json
 import os
 from enum import StrEnum
+from typing import Optional, Union
 
 import boto3
 from aws_lambda_powertools import Logger
@@ -20,7 +21,7 @@ CORS_HEADERS = {
 }
 
 
-def cors_json(status_code: int = 200, body: dict | list | str | None = None) -> Response:
+def cors_json(status_code: int = 200, body: Optional[Union[dict, list, str]] = None) -> Response:
     if body is None:
         payload = ""
     elif isinstance(body, str):
@@ -42,49 +43,44 @@ metrics = Metrics(namespace="Powertools")
 
 
 class Team(StrEnum):
-    RED = "CZERWONI"
-    BLUE = "NIEBIESCY"
-    GREEN = "ZIELONI"
-    PURPLE = "FIOLETOWI"
-    BLACK = "CZARNI"
-    ORANGE = "POMARAŃCZOWI"
-    YELLOW = "ŻÓŁCI"
-
+    DEMENTORS = "Dementorzy"
+    SOULS = "Duszyczki"
+    ZOMBIES = "Zombiaki"
+    GOSSIPS = "Plotkary"
+    GOACIKS = "Goaciki"
+    CURSED = "Przeklęci"
+    CORPSES = "Truposze"
 
 # Helper: choose a random valid team value (unique by value)
 TEAM_VALUES = sorted({t.value for t in Team})
 
+MEMBER_TO_TEAM = {
+    "Łukasz": Team.DEMENTORS.value,
+    "Gaba": Team.DEMENTORS.value,
+    "Natalia": Team.SOULS.value,
+    "Zuza": Team.SOULS.value,
+    "Eryk": Team.ZOMBIES.value,
+    "Hubert N": Team.ZOMBIES.value,
+    "Julita": Team.GOSSIPS.value,
+    "Monika": Team.GOSSIPS.value,
+    "Adam": Team.GOACIKS.value,
+    "Paweł": Team.GOACIKS.value,
+    "Oskar": Team.CURSED.value,
+    "Mati": Team.CURSED.value,
+    "Hubert Cz": Team.CORPSES.value,
+    "Paula": Team.CORPSES.value,
+}
+
 
 def _pick_random_team(member: str) -> str:
-    if member == "Łukasz":
-        return Team.RED
-    if member == "Gaba":
-        return Team.RED
-    if member == "Natalia":
-        return Team.BLUE
-    if member == "Zuza":
-        return Team.BLUE
-    if member == "Eryk":
-        return Team.GREEN
-    if member == "Hubert N":
-        return Team.GREEN
-    if member == "Julita":
-        return Team.PURPLE
-    if member == "Monika":
-        return Team.PURPLE
-    if member == "Adam":
-        return Team.BLACK
-    if member == "Paweł":
-        return Team.BLACK
-    if member == "Oskar":
-        return Team.ORANGE
-    if member == "Mati":
-        return Team.ORANGE
-    if member == "Hubert Cz":
-        return Team.YELLOW
-    if member == "Paula":
-        return Team.YELLOW
-    raise ValueError(f"Unknown member: {member}")
+    """
+    Returns the canonical team id (e.g. 'dementors').
+    Raises ValueError for unknown members.
+    """
+    team = MEMBER_TO_TEAM.get(member)
+    if not team:
+        raise ValueError(f"Unknown member: {member}")
+    return team
 
 
 dynamodb = boto3.resource("dynamodb")
@@ -135,7 +131,7 @@ def get_teams():
 
 @app.get("/unassigned-member")
 @tracer.capture_method
-def get_teams():
+def get_unassigned_member():
     return cors_json(200, {"unassigned_member": _get_first_unassigned_member()})
 
 @app.post("/code")
@@ -155,7 +151,7 @@ def code():
             for team in teams:
                 players = team.get("players", [])
                 if member.get("member") in players:
-                    teammate = next(p for p in players if p != member.get("member"))
+                    teammate = next((p for p in players if p != member.get("member")), None)
                     member["teammate"] = teammate
             return cors_json(200, {"data": member})
     return cors_json(400, {"error": "Invalid code"})
@@ -169,8 +165,10 @@ def assign_member():
     if not member or not isinstance(member, str):
         return cors_json(400, {"message": "member is required (string)"})
     logger.info("assigning member %s", member)
-    # Pick any team (no balancing/constraints)
-    team = _pick_random_team(member)
+    try:
+        team = _pick_random_team(member)
+    except ValueError as e:
+        return cors_json(400, {"message": str(e)})
     logger.info("Random team selected", team=team)
 
     try:
