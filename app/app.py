@@ -52,6 +52,12 @@ class Team(StrEnum):
     CORPSES = "Truposze"
 
 
+class AnswerType(StrEnum):
+    QUESTION_ONLY = "QUESTION_ONLY",
+    USER_ANSWER = "USER_ANSWER",
+    CORRECT_ANSWER = "CORRECT_ANSWER",
+
+
 # Helper: choose a random valid team value (unique by value)
 TEAM_VALUES = sorted({t.value for t in Team})
 
@@ -160,8 +166,8 @@ def _validate(body: Dict[str, Any]):
     except Exception:
         return False, {"error": "invalid_types", "details": "question_number and answer_index must be integers"}
 
-    if not (0 <= aidx <= 3):
-        return False, {"error": "invalid_answer_index", "details": "answer_index must be 0..3"}
+    if not (1 <= aidx <= 4):
+        return False, {"error": "invalid_answer_index", "details": "answer_index must be 1..4"}
 
     if not isinstance(body["member"], str) or not body["member"].strip():
         return False, {"error": "invalid_member"}
@@ -193,11 +199,33 @@ def get_teams():
 @tracer.capture_method
 def get_question():
     number = _get_state()
-    if number == "0":
+    logger.info(f"Question number {number}")
+    logger.info(f"number is instanceof {type(number)}")
+    number_str = str(number)
+    if number_str == "0":
         return cors_json(409)
     else:
         teammate = app.current_event.get_query_string_value("teammate")
         logger.info(f"teammate: {teammate}")
+        question = _get_question(teammate, number_str)
+        return cors_json(200, question)
+
+
+@app.get("/answer")
+@tracer.capture_method
+def get_question():
+    number = _get_state()
+    if number == "0":
+        return cors_json(409)
+    else:
+        teammate = app.current_event.get_query_string_value("teammate")
+        type_str = app.current_event.get_query_string_value("type")
+        if not type_str:
+            raise ValueError("Missing required query parameter: 'type'")
+        type: AnswerType = AnswerType(type_str)
+        question_number = app.current_event.get_query_string_value("question_number")
+        answerer = app.current_event.get_query_string_value("member")
+
         question = _get_question(teammate, number)
         return cors_json(200, question)
 
@@ -253,7 +281,7 @@ def code():
     try:
         questions_table.put_item(
             Item={
-                "PK": payload["teammate"],
+                "PK": payload["teammate"].upper(),
                 "SK": f"answer#{payload['question_number']}",
                 "who_answered": payload["who_answered"],
                 "team": payload["team"],

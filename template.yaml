@@ -217,6 +217,39 @@ Resources:
       Tags:
         LambdaPowertools: python
 
+  GetAnswerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      CodeUri: app
+      Description: Stores an answer for the question
+      Architectures:
+        - x86_64
+      Tracing: Active
+      Events:
+        AssignPath:
+          Type: Api
+          Properties:
+            Path: /answer
+            Method: GET
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: AssignMember
+          POWERTOOLS_METRICS_NAMESPACE: Powertools
+          LOG_LEVEL: INFO
+          TEAMS_TABLE_NAME: !Ref TeamsTable
+          MEMBERS_TABLE_NAME: !Ref MembersTable
+          QUESTIONS_TABLE_NAME: !Ref QuestionsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TeamsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MembersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuestionsTable
+      Tags:
+        LambdaPowertools: python
+
   TeamsTable:
     Type: AWS::DynamoDB::Table
     Properties:
