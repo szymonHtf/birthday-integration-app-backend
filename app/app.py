@@ -1,7 +1,7 @@
 import json
 import os
 from enum import StrEnum
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 
 import boto3
 from aws_lambda_powertools import Logger
@@ -51,6 +51,7 @@ class Team(StrEnum):
     CURSED = "Przeklęci"
     CORPSES = "Truposze"
 
+
 # Helper: choose a random valid team value (unique by value)
 TEAM_VALUES = sorted({t.value for t in Team})
 
@@ -88,9 +89,11 @@ dynamodb_client = boto3.client("dynamodb")
 
 TEAMS_TABLE = os.environ["TEAMS_TABLE_NAME"]
 MEMBERS_TABLE = os.environ["MEMBERS_TABLE_NAME"]
+QUESTIONS_TABLE = os.environ["QUESTIONS_TABLE_NAME"]
 
 teams_table = dynamodb.Table(TEAMS_TABLE)
 members_table = dynamodb.Table(MEMBERS_TABLE)
+questions_table = dynamodb.Table(QUESTIONS_TABLE)
 
 
 def _scan_all(table):
@@ -115,6 +118,63 @@ def _get_first_unassigned_member():
     return None
 
 
+def _get_state():
+    resp = questions_table.get_item(Key={"PK": "STATE", "SK": "STATE"})
+    item = resp.get("Item")
+    if not item:
+        return None
+    return item.get("question_number")
+
+
+def _get_question(teammate, number):
+    resp = questions_table.get_item(Key={"PK": teammate.upper(), "SK": f"question#{number}"})
+    item = resp.get("Item")
+    if not item:
+        return None
+    return {
+        "question": item.get("question"),
+        "question_number": number,
+        "answer1": item.get("answer1"),
+        "answer2": item.get("answer2"),
+        "answer3": item.get("answer3"),
+        "answer4": item.get("answer4"),
+    }
+
+
+def _validate(body: Dict[str, Any]):
+    required = [
+        "member",
+        "team",
+        "teammate",
+        "question_number",
+        "answer_index",
+        "answer_text",
+    ]
+    missing = [k for k in required if k not in body]
+    if missing:
+        return False, {"error": "missing_fields", "fields": missing}
+
+    try:
+        qnum = int(body["question_number"])
+        aidx = int(body["answer_index"])
+    except Exception:
+        return False, {"error": "invalid_types", "details": "question_number and answer_index must be integers"}
+
+    if not (0 <= aidx <= 3):
+        return False, {"error": "invalid_answer_index", "details": "answer_index must be 0..3"}
+
+    if not isinstance(body["member"], str) or not body["member"].strip():
+        return False, {"error": "invalid_member"}
+    if not isinstance(body["team"], str) or not body["team"].strip():
+        return False, {"error": "invalid_team"}
+    if not isinstance(body["teammate"], str) or not body["teammate"].strip():
+        return False, {"error": "invalid_teammate"}
+    if not isinstance(body["answer_text"], str) or not body["answer_text"].strip():
+        return False, {"error": "invalid_answer_text"}
+
+    return True, None
+
+
 @app.get("/teams")
 @tracer.capture_method
 def get_teams():
@@ -129,10 +189,24 @@ def get_teams():
     return cors_json(200, {"teams": teams})
 
 
+@app.get("/question")
+@tracer.capture_method
+def get_question():
+    number = _get_state()
+    if number == "0":
+        return cors_json(409)
+    else:
+        teammate = app.current_event.get_query_string_value("teammate")
+        logger.info(f"teammate: {teammate}")
+        question = _get_question(teammate, number)
+        return cors_json(200, question)
+
+
 @app.get("/unassigned-member")
 @tracer.capture_method
 def get_unassigned_member():
     return cors_json(200, {"unassigned_member": _get_first_unassigned_member()})
+
 
 @app.post("/code")
 @tracer.capture_method
@@ -155,6 +229,46 @@ def code():
                     member["teammate"] = teammate
             return cors_json(200, {"data": member})
     return cors_json(400, {"error": "Invalid code"})
+
+
+@app.post("/answer")
+@tracer.capture_method
+def code():
+    body = app.current_event.json_body or {}
+
+    ok, err = _validate(body)
+    if not ok:
+        logger.warning("Validation failed", extra={"error": err, "body": body})
+        return cors_json(400, err)
+
+    payload = {
+        "who_answered": str(body["member"]).strip(),
+        "team": str(body["team"]).strip(),
+        "teammate": str(body["teammate"]).strip(),
+        "question_number": int(body["question_number"]),
+        "answer_index": int(body["answer_index"]),
+        "answer_text": str(body["answer_text"]).strip(),
+    }
+
+    try:
+        questions_table.put_item(
+            Item={
+                "PK": payload["teammate"],
+                "SK": f"answer#{payload['question_number']}",
+                "who_answered": payload["who_answered"],
+                "team": payload["team"],
+                "teammate": payload["teammate"],
+                "question_number": payload["question_number"],
+                "answer_index": payload["answer_index"],
+                "answer_text": payload["answer_text"],
+            }
+        )
+        logger.info("Answer stored", extra={"payload": payload})
+        return cors_json(200, {"status": "ok"})
+    except Exception as e:
+        logger.exception("Failed to update item")
+        return cors_json(500, {"error": str(e)})
+
 
 @app.post("/assign")
 @tracer.capture_method

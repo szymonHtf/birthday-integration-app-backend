@@ -42,9 +42,14 @@ Resources:
           LOG_LEVEL: INFO
           TEAMS_TABLE_NAME: !Ref TeamsTable
           MEMBERS_TABLE_NAME: !Ref MembersTable
+          QUESTIONS_TABLE_NAME: !Ref QuestionsTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TeamsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MembersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuestionsTable
       Tags:
         LambdaPowertools: python
 
@@ -70,11 +75,14 @@ Resources:
           LOG_LEVEL: INFO
           TEAMS_TABLE_NAME: !Ref TeamsTable
           MEMBERS_TABLE_NAME: !Ref MembersTable
+          QUESTIONS_TABLE_NAME: !Ref QuestionsTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TeamsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref MembersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuestionsTable
       Tags:
         LambdaPowertools: python
 
@@ -100,21 +108,47 @@ Resources:
           LOG_LEVEL: INFO
           TEAMS_TABLE_NAME: !Ref TeamsTable
           MEMBERS_TABLE_NAME: !Ref MembersTable
+          QUESTIONS_TABLE_NAME: !Ref QuestionsTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TeamsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref MembersTable
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:TransactWriteItems
-              Resource:
-                - !GetAtt TeamsTable.Arn
-                - !GetAtt MembersTable.Arn
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuestionsTable
       Tags:
         LambdaPowertools: python
+
+  GetQuestionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      CodeUri: app
+      Description: Function that returns the question or 409 if the quizs havent started yet
+      Architectures:
+        - x86_64
+      Tracing: Active
+      Events:
+        HelloPath:
+          Type: Api
+          Properties:
+            Path: /question
+            Method: GET
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: PowertoolsHelloWorld
+          POWERTOOLS_METRICS_NAMESPACE: Powertools
+          LOG_LEVEL: INFO
+          TEAMS_TABLE_NAME: !Ref TeamsTable
+          MEMBERS_TABLE_NAME: !Ref MembersTable
+          QUESTIONS_TABLE_NAME: !Ref QuestionsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TeamsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MembersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuestionsTable
 
   CodeFunction:
     Type: AWS::Serverless::Function
@@ -138,19 +172,48 @@ Resources:
           LOG_LEVEL: INFO
           TEAMS_TABLE_NAME: !Ref TeamsTable
           MEMBERS_TABLE_NAME: !Ref MembersTable
+          QUESTIONS_TABLE_NAME: !Ref QuestionsTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TeamsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref MembersTable
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:TransactWriteItems
-              Resource:
-                - !GetAtt TeamsTable.Arn
-                - !GetAtt MembersTable.Arn
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuestionsTable
+      Tags:
+        LambdaPowertools: python
+
+
+  AnswerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      CodeUri: app
+      Description: Stores an answer for the question
+      Architectures:
+        - x86_64
+      Tracing: Active
+      Events:
+        AssignPath:
+          Type: Api
+          Properties:
+            Path: /answer
+            Method: POST
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: AssignMember
+          POWERTOOLS_METRICS_NAMESPACE: Powertools
+          LOG_LEVEL: INFO
+          TEAMS_TABLE_NAME: !Ref TeamsTable
+          MEMBERS_TABLE_NAME: !Ref MembersTable
+          QUESTIONS_TABLE_NAME: !Ref QuestionsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TeamsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MembersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuestionsTable
       Tags:
         LambdaPowertools: python
 
@@ -177,3 +240,19 @@ Resources:
       KeySchema:
         - AttributeName: member
           KeyType: HASH
+
+  QuestionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: birthday-integration-app-questions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
