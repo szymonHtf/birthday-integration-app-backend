@@ -48,7 +48,6 @@ class Team(StrEnum):
     ZOMBIES = "Zombiaki"
     GOSSIPS = "Plotkary"
     GOACIKS = "Goaciki"
-    CURSED = "Przeklęci"
     CORPSES = "Truposze"
 
 
@@ -72,10 +71,8 @@ MEMBER_TO_TEAM = {
     "Monika": Team.GOSSIPS.value,
     "Adam": Team.GOACIKS.value,
     "Paweł": Team.GOACIKS.value,
-    "Oskar": Team.CURSED.value,
-    "Mati": Team.CURSED.value,
+    "Oskar": Team.CORPSES.value,
     "Hubert Cz": Team.CORPSES.value,
-    "Paula": Team.CORPSES.value,
 }
 
 
@@ -146,6 +143,29 @@ def _get_question(teammate, number):
         "answer4": item.get("answer4"),
     }
 
+def _get_full_question(teammate, number):
+    resp = questions_table.get_item(Key={"PK": teammate.upper(), "SK": f"question#{number}"})
+    item = resp.get("Item")
+    if not item:
+        return None
+    return {
+        "question": item.get("question"),
+        "question_number": number,
+        "answer1": item.get("answer1"),
+        "answer2": item.get("answer2"),
+        "answer3": item.get("answer3"),
+        "answer4": item.get("answer4"),
+        "correct_answer": item.get("correct_answer"),
+    }
+
+def _get_user_answer(teammate, number):
+    resp = questions_table.get_item(Key={"PK": teammate.upper(), "SK": f"answer#{number}"})
+    item = resp.get("Item")
+    if not item:
+        return None
+    return {
+        "user_answer": f"answer{item.get('answer_index')}"
+    }
 
 def _validate(body: Dict[str, Any]):
     required = [
@@ -224,10 +244,19 @@ def get_question():
             raise ValueError("Missing required query parameter: 'type'")
         type: AnswerType = AnswerType(type_str)
         question_number = app.current_event.get_query_string_value("question_number")
-        answerer = app.current_event.get_query_string_value("member")
 
-        question = _get_question(teammate, number)
-        return cors_json(200, question)
+        if type == AnswerType.QUESTION_ONLY:
+            question = _get_question(teammate, question_number)
+            return cors_json(200, question)
+        elif type == AnswerType.USER_ANSWER:
+            question = _get_question(teammate, question_number)
+            user_answer = _get_user_answer(teammate, question_number)
+            return cors_json(200, question | user_answer)
+        elif type == AnswerType.CORRECT_ANSWER:
+            question = _get_full_question(teammate, question_number)
+            user_answer = _get_user_answer(teammate, question_number)
+            return cors_json(200, question | user_answer)
+        return None
 
 
 @app.get("/unassigned-member")
